@@ -93,10 +93,7 @@ trait MethodDefiner {
                 param_node.name.name.clone(),
             );
 
-            if param_node.mutable {
-                pid.set_mutable(self.db_mut());
-            }
-
+            pid.set_kind(self.db_mut(), param_node.mutable, param_node.movable);
             param_node.type_parameter_id = Some(pid);
         }
     }

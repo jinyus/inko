@@ -220,7 +220,7 @@ class pub Command {
   #     import std.sys.Command
   #
   #     Command.new('/usr/bin/ls')
-  fn pub static new[T: IntoString](program: T) -> Command {
+  fn pub static new[T: move + IntoString](program: T) -> Command {
     Command {
       @program = program.into_string,
       @stdin = Stream.Inherit,
@@ -244,7 +244,7 @@ class pub Command {
   #     import std.sys.Command
   #
   #     Command.new('ls').directory('/tmp')
-  fn pub mut directory[T: IntoString](path: T) {
+  fn pub mut directory[T: move + IntoString](path: T) {
     @directory = Option.Some(path.into_string)
   }
 

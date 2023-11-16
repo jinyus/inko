@@ -730,10 +730,7 @@ impl<'a> DefineTypeParameters<'a> {
             } else {
                 let pid = id.new_type_parameter(self.db_mut(), name.clone());
 
-                if param.mutable {
-                    pid.set_mutable(self.db_mut());
-                }
-
+                pid.set_kind(self.db_mut(), param.mutable, param.movable);
                 param.type_parameter_id = Some(pid);
             }
         }
@@ -754,10 +751,7 @@ impl<'a> DefineTypeParameters<'a> {
             } else {
                 let pid = id.new_type_parameter(self.db_mut(), name.clone());
 
-                if param.mutable {
-                    pid.set_mutable(self.db_mut());
-                }
-
+                pid.set_kind(self.db_mut(), param.mutable, param.movable);
                 param.type_parameter_id = Some(pid);
             }
         }

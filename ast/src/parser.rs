@@ -1276,6 +1276,7 @@ impl Parser {
             let token = self.require()?;
             let req = match token.kind {
                 TokenKind::Mut => Requirement::Mutable(token.location),
+                TokenKind::Move => Requirement::Movable(token.location),
                 _ => Requirement::Trait(
                     self.type_name_with_optional_namespace(token)?,
                 ),
@@ -5133,7 +5134,7 @@ mod tests {
         );
 
         assert_eq!(
-            top(parse("impl A for B if X: A + B, Y: C + mut {}")),
+            top(parse("impl A for B if X: A + B, Y: C + mut + move {}")),
             TopLevelExpression::ImplementTrait(Box::new(ImplementTrait {
                 trait_name: TypeName {
                     name: Constant {
@@ -5151,7 +5152,7 @@ mod tests {
                 },
                 body: ImplementationExpressions {
                     values: Vec::new(),
-                    location: cols(38, 39)
+                    location: cols(45, 46)
                 },
                 bounds: Some(TypeBounds {
                     values: vec![
@@ -5203,16 +5204,17 @@ mod tests {
                                         arguments: None,
                                         location: cols(30, 30)
                                     }),
-                                    Requirement::Mutable(cols(34, 36))
+                                    Requirement::Mutable(cols(34, 36)),
+                                    Requirement::Movable(cols(40, 43)),
                                 ],
-                                location: cols(30, 36)
+                                location: cols(30, 43)
                             },
-                            location: cols(27, 36)
+                            location: cols(27, 43)
                         }
                     ],
-                    location: cols(17, 36)
+                    location: cols(17, 43)
                 }),
-                location: cols(1, 39)
+                location: cols(1, 46)
             }))
         );
 

@@ -411,7 +411,9 @@ impl<'a> DefineTypeSignature<'a> {
             RefKind::Uni => TypeRef::Uni(type_id),
             RefKind::Ref => TypeRef::Ref(type_id),
             RefKind::Mut => {
-                if !param_id.is_mutable(self.db()) {
+                if !param_id.is_mutable(self.db())
+                    && !param_id.is_movable(self.db())
+                {
                     self.state.diagnostics.error(
                         DiagnosticId::InvalidType,
                         format!(
@@ -891,10 +893,7 @@ pub(crate) fn define_type_bounds(
             }
         }
 
-        if bound.mutable {
-            new_param.set_mutable(&mut state.db);
-        }
-
+        new_param.set_kind(&mut state.db, bound.mutable, bound.movable);
         new_param.set_original(&mut state.db, param);
         new_param.add_requirements(&mut state.db, reqs);
         bounds.set(param, new_param);

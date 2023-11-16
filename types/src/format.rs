@@ -2,8 +2,8 @@
 use crate::{
     Arguments, ClassId, ClassInstance, ClassKind, ClosureId, Database,
     ForeignType, MethodId, MethodKind, ModuleId, TraitId, TraitInstance,
-    TypeArguments, TypeId, TypeParameterId, TypePlaceholderId, TypeRef,
-    Visibility,
+    TypeArguments, TypeId, TypeParameterId, TypeParameterKind,
+    TypePlaceholderId, TypeRef, Visibility,
 };
 
 const MAX_FORMATTING_DEPTH: usize = 8;
@@ -168,8 +168,10 @@ impl TypeParameterId {
 
         buffer.write(&param.name);
 
-        if param.mutable {
-            buffer.write(": mut");
+        match param.kind {
+            TypeParameterKind::Mutable => buffer.write(": mut"),
+            TypeParameterKind::Movable => buffer.write(": move"),
+            _ => {}
         }
     }
 }

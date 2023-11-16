@@ -194,6 +194,13 @@ impl TypePlaceholderId {
     }
 }
 
+#[derive(Clone)]
+enum TypeParameterKind {
+    Immutable,
+    Mutable,
+    Movable,
+}
+
 /// A type parameter for a method or class.
 #[derive(Clone)]
 pub struct TypeParameter {
@@ -204,8 +211,9 @@ pub struct TypeParameter {
     /// this type parameter.
     requirements: Vec<TraitInstance>,
 
-    /// If mutable references to this type parameter are allowed.
-    mutable: bool,
+    /// What "kind" of type parameter we're dealing with (e.g. one that allows
+    /// mutations).
+    kind: TypeParameterKind,
 
     /// The ID of the original type parameter in case the current one is a
     /// parameter introduced through additional type bounds.
@@ -225,7 +233,12 @@ impl TypeParameter {
     }
 
     fn new(name: String) -> Self {
-        Self { name, requirements: Vec::new(), mutable: false, original: None }
+        Self {
+            name,
+            requirements: Vec::new(),
+            kind: TypeParameterKind::Immutable,
+            original: None,
+        }
     }
 }
 
@@ -269,19 +282,36 @@ impl TypeParameterId {
         self.get(db).original
     }
 
-    pub fn set_mutable(self, db: &mut Database) {
-        self.get_mut(db).mutable = true;
+    pub fn set_kind(self, db: &mut Database, mutable: bool, movable: bool) {
+        self.get_mut(db).kind = if mutable {
+            TypeParameterKind::Mutable
+        } else if movable {
+            TypeParameterKind::Movable
+        } else {
+            TypeParameterKind::Immutable
+        };
     }
 
     pub fn is_mutable(self, db: &Database) -> bool {
-        self.get(db).mutable
+        matches!(self.get(db).kind, TypeParameterKind::Mutable)
+    }
+
+    pub fn is_movable(self, db: &Database) -> bool {
+        matches!(self.get(db).kind, TypeParameterKind::Movable)
     }
 
     pub fn as_immutable(self, db: &mut Database) -> TypeParameterId {
         let mut copy = self.get(db).clone();
 
-        copy.mutable = false;
+        copy.kind = TypeParameterKind::Immutable;
         TypeParameter::add(db, copy)
+    }
+
+    fn allow_mutating(self, db: &Database) -> bool {
+        matches!(
+            self.get(db).kind,
+            TypeParameterKind::Mutable | TypeParameterKind::Movable
+        )
     }
 
     fn get(self, db: &Database) -> &TypeParameter {
@@ -3459,8 +3489,17 @@ impl TypeRef {
         self.is_instance_of(db, ClassId::nil())
     }
 
-    pub fn allow_moving(self) -> bool {
-        matches!(self, TypeRef::Owned(_) | TypeRef::Uni(_))
+    pub fn allow_moving(self, db: &Database) -> bool {
+        match self {
+            TypeRef::Owned(
+                TypeId::TypeParameter(id) | TypeId::RigidTypeParameter(id),
+            )
+            | TypeRef::Uni(
+                TypeId::TypeParameter(id) | TypeId::RigidTypeParameter(id),
+            ) => id.is_movable(db),
+            TypeRef::Owned(_) | TypeRef::Uni(_) => true,
+            _ => false,
+        }
     }
 
     pub fn allow_mutating(self, db: &Database) -> bool {
@@ -3469,7 +3508,9 @@ impl TypeRef {
             TypeRef::Owned(TypeId::TypeParameter(id))
             | TypeRef::Uni(TypeId::TypeParameter(id))
             | TypeRef::Owned(TypeId::RigidTypeParameter(id))
-            | TypeRef::Uni(TypeId::RigidTypeParameter(id)) => id.is_mutable(db),
+            | TypeRef::Uni(TypeId::RigidTypeParameter(id)) => {
+                id.allow_mutating(db)
+            }
             TypeRef::Owned(_) | TypeRef::Uni(_) => true,
             TypeRef::Ref(TypeId::ClassInstance(ins)) => {
                 ins.instance_of.is_value_type(db)
@@ -4941,7 +4982,7 @@ mod tests {
         let param1 = new_parameter(&mut db, "A");
         let param2 = new_parameter(&mut db, "A");
 
-        param2.set_mutable(&mut db);
+        param2.set_kind(&mut db, true, false);
         var.assign(&db, owned(instance(int)));
 
         assert!(owned(instance(int)).allow_as_mut(&db));
@@ -4974,7 +5015,7 @@ mod tests {
         let param1 = new_parameter(&mut db, "A");
         let param2 = new_parameter(&mut db, "A");
 
-        param2.set_mutable(&mut db);
+        param2.set_kind(&mut db, true, false);
 
         assert_eq!(owned(instance(int)).as_mut(&db), mutable(instance(int)));
         assert_eq!(

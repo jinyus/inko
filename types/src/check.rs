@@ -250,6 +250,10 @@ impl<'a> TypeChecker<'a> {
                 return false;
             }
 
+            if bound.is_movable(self.db) && !val.is_owned_or_uni(self.db) {
+                return false;
+            }
+
             bound.requirements(self.db).into_iter().all(|r| {
                 self.check_type_ref_with_trait(val, r, &mut env, rules)
             })
@@ -406,7 +410,7 @@ impl<'a> TypeChecker<'a> {
             },
             TypeRef::Ref(left_id) => match right {
                 TypeRef::Infer(TypeId::TypeParameter(pid))
-                    if pid.is_mutable(self.db)
+                    if pid.allow_mutating(self.db)
                         && !left.is_value_type(self.db) =>
                 {
                     false
@@ -423,7 +427,7 @@ impl<'a> TypeChecker<'a> {
                 }
                 TypeRef::Placeholder(id) => {
                     if let Some(req) = id.required(self.db) {
-                        if req.is_mutable(self.db)
+                        if req.allow_mutating(self.db)
                             && !left.is_value_type(self.db)
                         {
                             return false;
@@ -443,6 +447,11 @@ impl<'a> TypeChecker<'a> {
                 _ => false,
             },
             TypeRef::Mut(left_id) => match right {
+                TypeRef::Infer(TypeId::TypeParameter(pid))
+                    if pid.is_movable(self.db) =>
+                {
+                    false
+                }
                 TypeRef::Ref(right_id) | TypeRef::Infer(right_id) => {
                     self.check_type_id(left_id, right_id, env, rules)
                 }
@@ -457,15 +466,24 @@ impl<'a> TypeChecker<'a> {
                 {
                     self.check_type_id(left_id, right_id, env, rules)
                 }
-                TypeRef::Placeholder(id) => self
-                    .check_type_id_with_placeholder(
+                TypeRef::Placeholder(id) => {
+                    if let Some(req) = id.required(self.db) {
+                        if req.is_movable(self.db)
+                            && !left.is_value_type(self.db)
+                        {
+                            return false;
+                        }
+                    }
+
+                    self.check_type_id_with_placeholder(
                         left,
                         left_id,
                         original_right,
                         id,
                         env,
                         rules,
-                    ),
+                    )
+                }
                 TypeRef::Error => true,
                 _ => false,
             },
@@ -1511,7 +1529,7 @@ mod tests {
         let param = new_parameter(&mut db, "T");
         let mutable_var = TypePlaceholder::alloc(&mut db, Some(param));
 
-        param.set_mutable(&mut db);
+        param.set_kind(&mut db, true, false);
 
         check_ok(&db, immutable(instance(thing)), immutable(instance(thing)));
         check_ok(&db, immutable(instance(thing)), infer(instance(thing)));
@@ -2071,7 +2089,7 @@ mod tests {
         let exp_param = new_parameter(&mut db, "Expected");
 
         exp_param.add_requirements(&mut db, vec![trait_instance(update)]);
-        array_bounds.set_mutable(&mut db);
+        array_bounds.set_kind(&mut db, true, false);
         array.add_trait_implementation(
             &mut db,
             TraitImplementation {

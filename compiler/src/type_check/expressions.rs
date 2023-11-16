@@ -438,7 +438,7 @@ impl MethodCall {
         let name = self.method.name(&state.db);
         let rec = self.receiver;
 
-        if self.method.is_moving(&state.db) && !rec.allow_moving() {
+        if self.method.is_moving(&state.db) && !rec.allow_moving(&state.db) {
             state.diagnostics.error(
                 DiagnosticId::InvalidCall,
                 format!(

@@ -584,6 +584,7 @@ impl Node for ReopenClass {
 pub enum Requirement {
     Trait(TypeName),
     Mutable(SourceLocation),
+    Movable(SourceLocation),
 }
 
 impl Node for Requirement {
@@ -591,6 +592,7 @@ impl Node for Requirement {
         match self {
             Requirement::Trait(n) => &n.location,
             Requirement::Mutable(loc) => loc,
+            Requirement::Movable(loc) => loc,
         }
     }
 }

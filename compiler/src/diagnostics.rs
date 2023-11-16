@@ -797,15 +797,14 @@ impl Diagnostics {
         );
     }
 
-    pub(crate) fn type_parameter_already_mutable(
+    pub(crate) fn conflicting_type_parameter_requirements(
         &mut self,
-        name: &str,
         file: PathBuf,
         location: SourceLocation,
     ) {
         self.error(
             DiagnosticId::InvalidType,
-            format!("the type parameter '{}' is already mutable", name),
+            "type parameters can't require values to be both 'mut' and 'move'",
             file,
             location,
         );

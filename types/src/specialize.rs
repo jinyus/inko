@@ -442,12 +442,12 @@ mod tests {
         let param2 = tup.new_type_parameter(&mut db, "B".to_string());
         let param3 = tup.new_type_parameter(&mut db, "C".to_string());
 
-        param3.set_mutable(&mut db);
+        param3.set_kind(&mut db, true, false);
 
         let rigid1 = new_parameter(&mut db, "X");
         let rigid2 = new_parameter(&mut db, "Y");
 
-        rigid2.set_mutable(&mut db);
+        rigid2.set_kind(&mut db, true, false);
 
         tup.new_field(
             &mut db,

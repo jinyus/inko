@@ -405,6 +405,7 @@ pub(crate) struct TypeBound {
     pub(crate) name: Constant,
     pub(crate) requirements: Vec<TypeName>,
     pub(crate) mutable: bool,
+    pub(crate) movable: bool,
     pub(crate) location: SourceLocation,
 }
 
@@ -577,6 +578,7 @@ pub(crate) struct TypeParameter {
     pub(crate) name: Constant,
     pub(crate) requirements: Vec<TypeName>,
     pub(crate) mutable: bool,
+    pub(crate) movable: bool,
     pub(crate) location: SourceLocation,
 }
 
@@ -1361,6 +1363,7 @@ impl<'a> LowerToHir<'a> {
     fn type_bound(&mut self, node: ast::TypeBound) -> TypeBound {
         let name = self.constant(node.name);
         let mut mutable = false;
+        let mut movable = false;
         let mut requirements = Vec::new();
 
         for req in node.requirements.values {
@@ -1368,20 +1371,29 @@ impl<'a> LowerToHir<'a> {
                 ast::Requirement::Trait(n) => {
                     requirements.push(self.type_name(n))
                 }
-                ast::Requirement::Mutable(loc) if mutable => {
-                    self.state.diagnostics.type_parameter_already_mutable(
-                        &name.name,
-                        self.file(),
-                        loc,
-                    );
-                }
                 ast::Requirement::Mutable(_) => {
                     mutable = true;
+                }
+                ast::Requirement::Movable(_) => {
+                    movable = true;
                 }
             }
         }
 
-        TypeBound { name, requirements, mutable, location: node.location }
+        if movable && mutable {
+            self.state.diagnostics.conflicting_type_parameter_requirements(
+                self.file(),
+                node.location.clone(),
+            );
+        }
+
+        TypeBound {
+            name,
+            requirements,
+            mutable,
+            movable,
+            location: node.location,
+        }
     }
 
     fn define_trait(&mut self, node: ast::DefineTrait) -> TopLevelExpression {
@@ -1648,6 +1660,7 @@ impl<'a> LowerToHir<'a> {
         let name = self.constant(node.name);
         let location = node.location;
         let mut mutable = false;
+        let mut movable = false;
         let mut requirements = Vec::new();
 
         if let Some(reqs) = node.requirements {
@@ -1656,18 +1669,21 @@ impl<'a> LowerToHir<'a> {
                     ast::Requirement::Trait(n) => {
                         requirements.push(self.type_name(n))
                     }
-                    ast::Requirement::Mutable(loc) if mutable => {
-                        self.state.diagnostics.type_parameter_already_mutable(
-                            &name.name,
-                            self.file(),
-                            loc,
-                        );
-                    }
                     ast::Requirement::Mutable(_) => {
                         mutable = true;
                     }
+                    ast::Requirement::Movable(_) => {
+                        movable = true;
+                    }
                 }
             }
+        }
+
+        if movable && mutable {
+            self.state.diagnostics.conflicting_type_parameter_requirements(
+                self.file(),
+                location.clone(),
+            );
         }
 
         TypeParameter {
@@ -1676,6 +1692,7 @@ impl<'a> LowerToHir<'a> {
             requirements,
             location,
             mutable,
+            movable,
         }
     }
 
@@ -3393,6 +3410,7 @@ mod tests {
                         location: cols(11, 11)
                     }],
                     mutable: false,
+                    movable: false,
                     location: cols(8, 11)
                 }],
                 arguments: vec![MethodArgument {
@@ -3509,6 +3527,7 @@ mod tests {
                         location: cols(12, 12)
                     }],
                     mutable: false,
+                    movable: false,
                     location: cols(9, 12)
                 }],
                 body: vec![ClassExpression::Field(Box::new(DefineField {
@@ -3533,6 +3552,67 @@ mod tests {
                 location: cols(1, 27)
             })),
         );
+    }
+
+    #[test]
+    fn test_lower_class_with_mutable_parameter() {
+        let hir = lower_top_expr("class A[B: mut] {}").0;
+
+        assert_eq!(
+            hir,
+            TopLevelExpression::Class(Box::new(DefineClass {
+                public: false,
+                kind: ClassKind::Regular,
+                class_id: None,
+                name: Constant { name: "A".to_string(), location: cols(7, 7) },
+                type_parameters: vec![TypeParameter {
+                    type_parameter_id: None,
+                    name: Constant {
+                        name: "B".to_string(),
+                        location: cols(9, 9)
+                    },
+                    requirements: Vec::new(),
+                    mutable: true,
+                    movable: false,
+                    location: cols(9, 14)
+                }],
+                body: Vec::new(),
+                location: cols(1, 18)
+            })),
+        );
+    }
+
+    #[test]
+    fn test_lower_class_with_movable_parameter() {
+        let hir = lower_top_expr("class A[B: move] {}").0;
+
+        assert_eq!(
+            hir,
+            TopLevelExpression::Class(Box::new(DefineClass {
+                public: false,
+                kind: ClassKind::Regular,
+                class_id: None,
+                name: Constant { name: "A".to_string(), location: cols(7, 7) },
+                type_parameters: vec![TypeParameter {
+                    type_parameter_id: None,
+                    name: Constant {
+                        name: "B".to_string(),
+                        location: cols(9, 9)
+                    },
+                    requirements: Vec::new(),
+                    mutable: false,
+                    movable: true,
+                    location: cols(9, 15)
+                }],
+                body: Vec::new(),
+                location: cols(1, 19)
+            })),
+        );
+    }
+
+    #[test]
+    fn test_lower_class_with_invalid_parameter_requirements() {
+        assert_eq!(lower_top_expr("class A[B: move + mut] {}").1, 1);
     }
 
     #[test]
@@ -3660,6 +3740,7 @@ mod tests {
                         location: cols(20, 20)
                     }],
                     mutable: false,
+                    movable: false,
                     location: cols(17, 20)
                 }],
                 body: vec![ClassExpression::Field(Box::new(DefineField {
@@ -3735,6 +3816,7 @@ mod tests {
                             },
                             requirements: Vec::new(),
                             mutable: false,
+                            movable: false,
                             location: cols(23, 23)
                         }],
                         arguments: vec![MethodArgument {
@@ -3807,6 +3889,7 @@ mod tests {
                             },
                             requirements: Vec::new(),
                             mutable: false,
+                            movable: false,
                             location: cols(22, 22)
                         }],
                         arguments: vec![MethodArgument {
@@ -3878,6 +3961,7 @@ mod tests {
                             },
                             requirements: Vec::new(),
                             mutable: false,
+                            movable: false,
                             location: cols(16, 16)
                         }],
                         arguments: vec![MethodArgument {
@@ -3953,6 +4037,7 @@ mod tests {
                     },
                     requirements: Vec::new(),
                     mutable: false,
+                    movable: false,
                     location: cols(9, 9)
                 }],
                 requirements: vec![TypeName {
@@ -4020,6 +4105,7 @@ mod tests {
                             },
                             requirements: Vec::new(),
                             mutable: false,
+                            movable: false,
                             location: cols(16, 16)
                         }],
                         arguments: vec![MethodArgument {
@@ -4151,6 +4237,7 @@ mod tests {
                             },
                             requirements: Vec::new(),
                             mutable: false,
+                            movable: false,
                             location: cols(16, 16)
                         }],
                         arguments: vec![MethodArgument {
@@ -4225,12 +4312,41 @@ mod tests {
                     },
                     requirements: Vec::new(),
                     mutable: true,
+                    movable: false,
                     location: cols(11, 16),
                 }],
                 body: Vec::new(),
                 location: cols(1, 16)
             }))
         );
+
+        assert_eq!(
+            lower_top_expr("impl A if T: move {}").0,
+            TopLevelExpression::Reopen(Box::new(ReopenClass {
+                class_id: None,
+                class_name: Constant {
+                    name: "A".to_string(),
+                    location: cols(6, 6)
+                },
+                bounds: vec![TypeBound {
+                    name: Constant {
+                        name: "T".to_string(),
+                        location: cols(11, 11)
+                    },
+                    requirements: Vec::new(),
+                    mutable: false,
+                    movable: true,
+                    location: cols(11, 17),
+                }],
+                body: Vec::new(),
+                location: cols(1, 17)
+            }))
+        );
+    }
+
+    #[test]
+    fn test_lower_type_bound_with_invalid_requirements() {
+        assert_eq!(lower_top_expr("impl A if T: move + mut {}").1, 1);
     }
 
     #[test]
@@ -4474,6 +4590,7 @@ mod tests {
                         location: cols(20, 20)
                     },],
                     mutable: true,
+                    movable: false,
                     location: cols(17, 26)
                 }],
                 body: Vec::new(),
@@ -6002,6 +6119,7 @@ mod tests {
                     },
                     requirements: Vec::new(),
                     mutable: false,
+                    movable: false,
                     location: cols(19, 19)
                 }],
                 body: vec![
